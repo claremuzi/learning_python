@@ -1,0 +1,224 @@
+1. create dataframe
+https://www.youtube.com/watch?v=Rp5LWT4or-o&list=PLxy0DxWEupiODTF_xM5Lw1ghc0XtLCUhC&index=1
+
+method 1:
+sample_data = [(1,'Sara','VA',10),\
+        (2,'Mike','MD',12),\
+        (3,'Kathy','FL',13),\
+        ]
+columns =['ID','Name','State','Age']
+
+df = spark.createDataFrame(data= sample_data, schema=columns)
+
+df.show()
+
+df.columns
+
+;
+
+2. read csv
+df= spark.read.csv('/xxx/name.csv')
+df= spark.read.option('header',True).option('nullValue','null').option('sep',';').csv('/xxx/name.csv')
+%fs head '/xxx/name.csv'
+
+read text
+df = spark.read.text('/xxx/name.txt')
+
+
+2.create a column and add constant/default value 
+https://www.youtube.com/watch?v=Rp5LWT4or-o&list=PLxy0DxWEupiODTF_xM5Lw1ghc0XtLCUhC&index=1
+
+df=df.withColumn('Note',lit('null'))
+
+
+
+
+
+3.Union
+https://www.youtube.com/watch?v=Rp5LWT4or-o&list=PLxy0DxWEupiODTF_xM5Lw1ghc0XtLCUhC&index=1
+
+df = df1.union(df2)
+
+
+4. explode
+https://www.youtube.com/watch?v=fztisfcFtbc&list=PLxy0DxWEupiODTF_xM5Lw1ghc0XtLCUhC&index=2
+
+from pyspark.sql.function import col, explode
+sample_data  = [ (1,['Sara','Smith']),\
+                (2,['Karen','Black']),\
+                (3,['Jenat'])\
+                (4,['Jackson','Yee])\
+]
+columns= ['id','Name']
+
+df.createDataFrame(data=sample_data, schema = columns)
+df= df.select(col('id'),explode(col('Name')).alias('Name'))
+df.show()
+
+
+5. Regular Expression Rlike,Regexp
+example 1:
+https://www.youtube.com/watch?v=sYZXnNrq1DA&list=PLxy0DxWEupiODTF_xM5Lw1ghc0XtLCUhC&index=3
+
+from spark.sql.function import col, 
+
+sample_data = [(1,'Sara','U88532bj'),\
+                (2,'Mike','77356') ,\
+                (3,'Jack','8936T3') \
+]
+columns = ['id','name','zipcode']
+df= spark.createDataFrame(data=sample_data, schema= columns)
+
+df.select("*").filter(col('zipcode').rlike('^[0-9]*$'))
+
+df.show()
+
+example 2:
+https://www.youtube.com/watch?v=R6FUeAxv6v8&list=PLxy0DxWEupiODTF_xM5Lw1ghc0XtLCUhC&index=7
+
+data like
+'1-Sara-23-2-Mike-34-3-Kathy-15-4-Jackson-20'
+
+df= spark.read.text('/xxx/name.txt')
+
+df1 = df.withColumn('new_value',regexp_replace('values',"(.*?\\-){3}","$0,")).drop("values")
+df2 = df1.withColumn('new_value2', explode(split(df1.new_value,'-,'))).drop('new_value')
+df3 = df2.withColumn('ID', split(df2.new_value2, ',')[0])\
+        .withColumn('Name', split(df2.new_value2, ',')[1])\
+        .withColumn('Age', split(df2.new_value2, ',')[3]).drop('new_value2')
+df3.show()
+
+
+6. skip line ingestion
+https://www.youtube.com/watch?v=geIJ9CbGkSE&list=PLxy0DxWEupiODTF_xM5Lw1ghc0XtLCUhC&index=4
+
+data like (saved in csv)
+
+null
+null
+AB
+HT
+ID, Name
+1, Sara
+2, Mike
+3, Kathy
+4, Jackson
+
+step 1:
+df= spark.read.csv('/xxx/name.csv')
+rdd = sc.TextFile('/xxx/name.csv').zipWithIndex()
+rdd.collect()
+
+output:
+[('null',0),('null',1),('AB',2),('HT',3),('ID,Name',4)....]
+
+step 2:
+rdd = sc.TextFile('/xxx/name.csv').zipWithIndex().filter(lambda a:a[1] > 3)
+rdd.collect()
+
+output:
+[('ID,Name',4),('1,Sara',5),('2,Mike',6)...]
+
+step 3:
+rdd = sc.TextFile('/xxx/name.csv').zipWithIndex().filter(lambda a:a[1] > 3).map(lambda a:a[0].split(,))
+rdd.collect()
+
+output:
+[['ID','Name'],['1','Sara'],['2','Mike']...]
+
+step 4:
+column_rdd = rdd.first()
+column_rdd
+output:['ID','Name']
+
+step 5:
+sample_data_rdd = rdd.filter(lambda a: a != column_rdd)
+sample_data_rdd.collect()
+output:[['1','Sara'],['2','Mike']...]
+
+step 6:
+df = sample_data_rdd.toDF(column_rdd)
+display(df)
+
+
+
+7. count null values in each column 
+https://www.youtube.com/watch?v=OXCJwDu8UWw&list=PLxy0DxWEupiODTF_xM5Lw1ghc0XtLCUhC&index=5
+
+data like
+ID, Name, Age
+1,Sara,12
+2,Mike,null
+3,null,null
+
+df= spark.read.option('header',True).option('nullValue','null').csv('/xxx/name.csv')
+df.show()
+df.columns
+
+df.isnull.sum()?
+df.isnull.count()?
+df.isna.sum()?
+
+from pyspark.sql.function import count, col, when
+df_count = df.select([count(i) for i in df.columns])
+df_count.show()
+
+df_count = df.select([count(when(col(i).isNull(),i)).alias(i) for i in df.columns])
+df_count = df.select([sum(col(i).isNull()) for i in df.columns])????
+
+
+method 2:
+https://www.youtube.com/watch?v=OXCJwDu8UWw&list=PLxy0DxWEupiODTF_xM5Lw1ghc0XtLCUhC&index=5
+comments
+
+data = [
+    (1, "A", 23),
+    (2, "B", None),
+    (3, "C", 56),
+    (4, None, None),
+    (5, None, None)
+]
+
+data_schema=['ID','Name','Age']
+df=spark.createDataFrame(data,data_schema)
+df1=df.select([(df.count()-count(i)).alias(i) for i in df.columns])
+
+df1.show()
+
+
+8. delimiter (split,sep)
+https://www.youtube.com/watch?v=aJyUXbsYRBA&list=PLxy0DxWEupiODTF_xM5Lw1ghc0XtLCUhC&index=6
+
+data like
+id, name, scores
+1, Sara, 89|87|92
+2, Mike, 75|88|69
+
+df1= df.withColumn('Math',split(df.scores,'\\|')[0]) \
+        .withColumn('English',split(df.scores,'\\|')[1]) \
+        .withColumn('Chinese',split(df.scores,'\\|')[2]) \
+        .drop(df.scores)
+df1.show()
+
+df2= df.select('id','name',explode(split(df.scores,'\\|')).alias('score'))
+
+
+8. pivot
+https://www.youtube.com/watch?v=JOYTG2pQY4Q&list=PLxy0DxWEupiODTF_xM5Lw1ghc0XtLCUhC&index=8
+
+
+from pyspark.sql.functions import *
+df1 = df.groupBy('ID','Date').pivot('Name').agg(collect_list('Country'))
+display(df1)
+--pivot column (from row to column)
+
+list_column_to_explode = df1.columns[2:]
+for i in range(len(list_column_to_explode)):
+    list_column_to_explode[i]= 'new1'+list_column_to_explode[i]
+
+
+df2 = d1.withColumn('new',array_zip(*df1.columns[2:])).withColumn('new1',explode('new')).drop('new')
+df3 = d2.select(*df1.columns[0:2],*list_column_to_explode)
+display(df3)
+
+
