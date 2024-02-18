@@ -203,9 +203,8 @@ df1.show()
 df2= df.select('id','name',explode(split(df.scores,'\\|')).alias('score'))
 
 
-8. pivot
+9. pivot
 https://www.youtube.com/watch?v=JOYTG2pQY4Q&list=PLxy0DxWEupiODTF_xM5Lw1ghc0XtLCUhC&index=8
-
 
 from pyspark.sql.functions import *
 df1 = df.groupBy('ID','Date').pivot('Name').agg(collect_list('Country'))
@@ -222,3 +221,64 @@ df3 = d2.select(*df1.columns[0:2],*list_column_to_explode)
 display(df3)
 
 
+10 regexp
+regexp_extract
+https://www.youtube.com/watch?v=5qPeBkKHBPw&list=PLxy0DxWEupiODTF_xM5Lw1ghc0XtLCUhC&index=10
+
+sample_data = [(1,'JDCT8993YUG834'),(2,'0393912RRT12'),(3,'R235TUI')]
+columns = ['id','string']
+df= spark.createDataFrame(data=sample_data, schema=columns)
+
+from pyspark.sql.functions import regexp_extract
+df1= df.select(*).withColumn('new',regexp_extract(df.string, '(^[a-zA-Z]*[0-9]*)',1))\
+            .withColumn('new',regexp_extract(df.string, '(^[a-zA-Z]*[0-9]*)([a-zA-Z]*[0-9]*$)',2))\
+            .drop('string')
+df1.show()
+
+
+regexp_replace*
+https://www.youtube.com/watch?v=Pg0pSLrDpSs&list=PLxy0DxWEupiODTF_xM5Lw1ghc0XtLCUhC&index=12
+
+data like
+1, Jack-Will
+2, Mary-Jane
+3，Kitty Sun
+4，Ron Smith
+
+from pyspark.sql.functions import col, regexp_replace
+
+df1 = df.select("*").withColumn('new', split(regexp_replace(df.name, r('-'),' '), ' '))\
+                    .withColumn('First name',col(new)[0]) \
+                    .withColumn('Last name',col(new)[1]) \
+                    .drop(col('new'),col('name'))
+
+
+11.schema validation, write
+https://www.youtube.com/watch?v=77Zb5h1HJms&list=PLxy0DxWEupiODTF_xM5Lw1ghc0XtLCUhC&index=11
+
+12. raise Exception('This format is not correct!')
+https://www.youtube.com/watch?v=Pg0pSLrDpSs&list=PLxy0DxWEupiODTF_xM5Lw1ghc0XtLCUhC&index=12
+
+data like
+1, Jack-Will
+2, Mary-Jane
+3，Kitty Sun
+4，Ron Smith
+
+df1 = df.withColumn('New_name', regexp_extract(df.name, r'([a-zA-Z]+ [a-zA-Z]+)'，1))
+df1 = df1.select('New_name').filter(col('New_name')=='').count()
+if(df1):
+ raise Exception('This format is not correct!')
+else:
+ print('The format is correct!')
+
+13. use sql
+https://www.youtube.com/watch?v=iZzP3CMq8xE&list=PLxy0DxWEupiODTF_xM5Lw1ghc0XtLCUhC&index=13
+
+df.spark.createDataFrame(data,schema)
+df.createOrReplaceTempView('cinema')
+
+sql%
+select * from cinema where id%2 != 0 and upper(trim(description)) != 'BORING' order by rating desc 
+
+sql('''select * from cinema where id%2 != 0 and upper(trim(description)) != 'BORING' order by rating desc''')
