@@ -170,7 +170,7 @@ df_count = df.select([sum(col(i).isNull()) for i in df.columns])????
 method 2:
 https://www.youtube.com/watch?v=OXCJwDu8UWw&list=PLxy0DxWEupiODTF_xM5Lw1ghc0XtLCUhC&index=5
 comments
-
+# use None to show that the value is null
 data = [
     (1, "A", 23),
     (2, "B", None),
@@ -230,7 +230,7 @@ columns = ['id','string']
 df= spark.createDataFrame(data=sample_data, schema=columns)
 
 from pyspark.sql.functions import regexp_extract
-df1= df.select(*).withColumn('new',regexp_extract(df.string, '(^[a-zA-Z]*[0-9]*)',1))\
+df1= df.select('*').withColumn('new',regexp_extract(df.string, '(^[a-zA-Z]*[0-9]*)',1))\
             .withColumn('new',regexp_extract(df.string, '(^[a-zA-Z]*[0-9]*)([a-zA-Z]*[0-9]*$)',2))\
             .drop('string')
 df1.show()
@@ -265,7 +265,7 @@ data like
 3，Kitty Sun
 4，Ron Smith
 
-df1 = df.withColumn('New_name', regexp_extract(df.name, r'([a-zA-Z]+ [a-zA-Z]+)'，1))
+df1 = df.withColumn('New_name', regexp_extract(df.name, r'([a-zA-Z]+ [a-zA-Z]+)'，1)) ---1 to select the first ()
 df1 = df1.select('New_name').filter(col('New_name')=='').count()
 if(df1):
  raise Exception('This format is not correct!')
@@ -281,4 +281,27 @@ df.createOrReplaceTempView('cinema')
 sql%
 select * from cinema where id%2 != 0 and upper(trim(description)) != 'BORING' order by rating desc 
 
-sql('''select * from cinema where id%2 != 0 and upper(trim(description)) != 'BORING' order by rating desc''')
+df=sql('''select * from cinema where id%2 != 0 and upper(trim(description)) != 'BORING' order by rating desc''')
+display(df)
+
+from pyspark.sql.functions import col, upper, trim, desc
+df = df.select("*").filter((col('id')%2 != 0) & (upper(trim(col('description'))) != 'BORING')).orderBy(col('rating')).desc()
+
+
+14. correct_list
+https://www.youtube.com/watch?v=ySjOh5Oqc84&list=PLxy0DxWEupiODTF_xM5Lw1ghc0XtLCUhC&index=14
+
+
+df.groupBy('name','item').sum('weight') --this will work but cannot change column name
+df1 = df.groupBy('name','item').agg(sum('weight')).alias('sum_weight') -- use agg can use alias, can always use agg after groupBy
+df2 = df1.groupBy('name').agg(collect_list(struct('item','sum_weight'))).alias('items') --struct to create a dict
+output:
+name,items
+Jack, [{item:'banana','sum_weight':5},{item:'apple','sum_weight':2}]
+
+
+15. select duplicate email
+from pyspark.sql.functions import col
+
+df1 = df.groupBy('email').count().filter(col('count')>1).select('email')
+display(df1)
