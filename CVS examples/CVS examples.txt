@@ -1,0 +1,147 @@
+
+example 1
+create or replace table xxxx 
+options (expiration_timestamp = timestamp_add(current_timestamp(), interval 3 days)) as 
+
+example 2
+declare table_prod string;
+declare fields_for_comparison array<string>;
+declare fields_not_for_comparison array<string>;
+declare field string;
+
+set table_test = 
+set table_prod = 
+set fields_for_comparison = ['xxx','xxx'];
+set fields_not_for_comparison = ['xxx','xxx'];
+
+set = fileds = (
+select 
+    concat( "coalesce(cast(",  
+            string_agg(column_name, " as string), ''), coalesce(cast("),
+            " as string),'')"
+        ) as column_name
+    from 
+        (select 
+            column_name
+        from xxxx.xxxx.INFORMATION_SCHEMA.COLUMNS
+        where table_name = 'xxxxxxxx' 
+        )
+
+except distinct
+
+select 
+    column_name
+from unnest(fields_not_for_comparison) as column_name
+)
+;
+
+select fields;
+
+execute immediate'''
+create or replace temp table md5_all_fields_test as 
+select
+    trak_nbr,
+    md5(concat('''|| fields||''') as md5_value_test)
+from '''|| table_test ||'''
+'''
+;
+
+execute immediate'''
+create or replace temp table md5_all_fields_prod as 
+select
+    trak_nbr,
+    md5(concat('''|| fields||''') as md5_value_prod)
+from '''|| table_prod ||'''
+'''
+;
+
+create or replace temp table diff_master as
+select  
+    prod.trak_nbr as prod_trak_nbr,
+    test.trak_nbr as test_trak_nbr,   
+    md5_value_prod,
+    md5_value_test
+from  md5_all_fields_prod prod
+full outer join md5_all_fields_test test
+on prod.trak_nbr = test.trak_nbr and prod.md5_value_prod = test.md5_value_test 
+where prod.trak_nbr is null or test.trak_nbr is null 
+；
+
+example 3
+
+for address in (
+    select table_name, table_abbr, table_as_source_table
+    from xxx.xxx.main_table_details
+    where table_as_source_table is not null and table_abbr in ('ABC','DEF')
+do 
+    for field in (
+        select field_name, expected_values_from_query
+        from xxx.xxx.main_table_fields_for_quality_check
+        where table_name = address.table_abbr and expected_values_from_query is not null    
+              and trim(expected_values_from_query) <> 'not null' 
+    ) 
+    do
+    execute immediate'''
+    insert into xxx.xxx.data_quality_check_results
+    select
+        table_short_nm,
+        table_full_nm,
+        source_nm,
+        trim(" ''' || field.field_name|| ''' ") as column,
+
+        (select
+            string_agg('''|| field.field_name|| '''，', ' order by '''|| field.field_name|| ''' )
+        from (''' || field.expected_values_from_query || ''') as expected_value
+        ---expected_values_from_query is a select statement with filters
+        ),
+
+        case when missing_value is null then "N" else 'Y' end as missing_ind,
+        missing_value,
+        case when unexpected_value is null then 'N' else 'Y' end as unexpected_ind,
+        unexpected_value,
+        table_order
+        
+        from (
+            select 
+                string_agg(distinct missing_value, ', ' order by missing_value) as missing_value,
+                string_agg(distinct unexpected_value, ', ' order by unexpected_value) as unexpected_value
+            from (
+                select 
+                    case when expect.'''|| field.field_name|| ''' is not null and 
+                                for_test.'''|| field.field_name|| ''' is null
+                        then expect.'''|| field.field_name|| ''' 
+                        else null
+                        end as missing_value,
+                    
+                     case when expect.'''|| field.field_name|| ''' is null and 
+                                for_test.'''|| field.field_name|| ''' is not null
+                        then expect.'''|| field.field_name|| ''' 
+                        else null
+                        end as unexpected_value,
+                from (''' || field.expected_values_from_query || ''') expect
+
+            full outer join 
+
+                (select
+                    distinct '''|| field.field_name|| '''
+                from ('''||address.table_as_source_table || ''') for_test 
+                )
+            on expect.'''|| field.field_name|| ''' = for_rest.'''|| field.field_name|| ''') A
+                
+        )B
+
+        cross join  
+            (
+                select
+                    table_abbr as table_short_nm,
+                    table_name as table_full_nm,
+                    table_name_in_source_system as source_nm,
+                    table_order
+                from xxx.xxx.main_table_details
+                where table_abbr = trim(" '''|| address.table_abbr ||''' ") C
+            )
+'''
+; end for
+; end for
+
+)
