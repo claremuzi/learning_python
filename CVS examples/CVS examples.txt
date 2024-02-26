@@ -2,6 +2,9 @@
 example 1
 create or replace table xxxx 
 options (expiration_timestamp = timestamp_add(current_timestamp(), interval 3 days)) as 
+;
+
+
 
 example 2
 declare table_prod string;
@@ -66,6 +69,7 @@ full outer join md5_all_fields_test test
 on prod.trak_nbr = test.trak_nbr and prod.md5_value_prod = test.md5_value_test 
 where prod.trak_nbr is null or test.trak_nbr is null 
 ；
+
 
 example 3
 
@@ -145,3 +149,375 @@ do
 ; end for
 
 )
+
+example 4 monthly aggragated table
+--create date range
+create or replace temp table date_range_monthly as 
+select distinct
+    adjusted_lvl1_acct_id,
+    adjusted_lvl1_acct_nm,
+    Program_NM,
+    Clinical_Category,
+    campaign,
+    go_live_dt,
+    exprn_dt,
+    month1 as start_date,
+    last_day(month2) as end_date
+from 
+    (select * from xxx.xxx.OX_DM where Program_NM in ('MCA','SOC')) A 
+
+cross join Unnest(generate_date_array(date(go_live_dt), 
+                                     least(Date(exprn_dt), date_sub(current_date()),interval 1 month)) 
+) as month1
+
+cross join Unnest(generate_date_array(date(go_live_dt), 
+                                     least(Date(exprn_dt), date_sub(current_date()),interval 1 month)) 
+) as month2
+where month1 <= last_day(month2)
+;
+
+--create aggragated layer
+create or replace table xxx.xxx.aggragated_monthly as 
+select 
+dt.adjusted_lvl1_acct_nm,
+dt.adjusted_lvl1_acct_id,
+dt.campaign as agg_category,
+'Campaign' as agg_level,
+start_date,
+end_date,
+count(distinct case when identified_ind_HA = 1 then individual_id else null end) as enrolled_member,
+count(distinct case when identified_oppty_ind_HA = 1 then individual_id else null end) as identified_member_with_oppty,
+count(distinct case when identified_oppty_ind_HA = 1 then individual_id || oppty_id else null end) as total_identified_oppty,
+count(distinct case when targeted_ind = 1 then individual_id else null end) as outreached_targeted_member,
+count(distinct case when reached_ind = 1 then individual_id else null end) as reached_member,
+count(distinct case when engaged_ind = 1 then individual_id else null end) as engaged_member
+from 
+(select * from xxx.xxx.OX_DM where Program_NM in ('MCA','SOC')) A 
+right join date_range_monthly dt 
+on A.adjusted_lvl1_acct_id = dt.adjusted_lvl1_acct_id and A.campaign = dt.campaign
+and model_DT_HA beween start_date and end_date
+group by 1,2,3,4,5,6
+
+union all 
+
+select 
+dt.adjusted_lvl1_acct_nm,
+dt.adjusted_lvl1_acct_id,
+dt.Clinical_Category as agg_category,
+'Clinical_Category' as agg_level,
+start_date,
+end_date,
+count(distinct case when identified_ind_HA = 1 then individual_id else null end) as enrolled_member,
+count(distinct case when identified_oppty_ind_HA = 1 then individual_id else null end) as identified_member_with_oppty,
+count(distinct case when identified_oppty_ind_HA = 1 then individual_id || oppty_id else null end) as total_identified_oppty,
+count(distinct case when targeted_ind = 1 then individual_id else null end) as outreached_targeted_member,
+count(distinct case when reached_ind = 1 then individual_id else null end) as reached_member,
+count(distinct case when engaged_ind = 1 then individual_id else null end) as engaged_member
+from 
+(select * from xxx.xxx.OX_DM where Program_NM in ('MCA','SOC')) A 
+right join date_range_monthly dt 
+on A.adjusted_lvl1_acct_id = dt.adjusted_lvl1_acct_id and A.Clinical_Category = dt.Clinical_Category
+and model_DT_HA beween start_date and end_date
+group by 1,2,3,4,5,6
+
+union all 
+
+select 
+dt.adjusted_lvl1_acct_nm,
+dt.adjusted_lvl1_acct_id,
+concat(dt.Program_NM, 'total') as agg_category,
+'Program_NM' as agg_level,
+start_date,
+end_date,
+count(distinct case when identified_ind_HA = 1 then individual_id else null end) as enrolled_member,
+count(distinct case when identified_oppty_ind_HA = 1 then individual_id else null end) as identified_member_with_oppty,
+count(distinct case when identified_oppty_ind_HA = 1 then individual_id || oppty_id else null end) as total_identified_oppty,
+count(distinct case when targeted_ind = 1 then individual_id else null end) as outreached_targeted_member,
+count(distinct case when reached_ind = 1 then individual_id else null end) as reached_member,
+count(distinct case when engaged_ind = 1 then individual_id else null end) as engaged_member
+from 
+(select * from xxx.xxx.OX_DM where Program_NM in ('MCA','SOC')) A 
+right join date_range_monthly dt 
+on A.adjusted_lvl1_acct_id = dt.adjusted_lvl1_acct_id and A.Program_NM = dt.Program_NM
+and model_DT_HA beween start_date and end_date
+group by 1,2,3,4,5,6
+
+union all 
+
+select 
+dt.adjusted_lvl1_acct_nm,
+dt.adjusted_lvl1_acct_id,
+ 'total' as agg_category,
+'Clinical_Total' as agg_level,
+start_date,
+end_date,
+count(distinct case when identified_ind_HA = 1 then individual_id else null end) as enrolled_member,
+count(distinct case when identified_oppty_ind_HA = 1 then individual_id else null end) as identified_member_with_oppty,
+count(distinct case when identified_oppty_ind_HA = 1 then individual_id || oppty_id else null end) as total_identified_oppty,
+count(distinct case when targeted_ind = 1 then individual_id else null end) as outreached_targeted_member,
+count(distinct case when reached_ind = 1 then individual_id else null end) as reached_member,
+count(distinct case when engaged_ind = 1 then individual_id else null end) as engaged_member
+from 
+(select * from xxx.xxx.OX_DM where Program_NM in ('MCA','SOC')) A 
+right join date_range_monthly dt 
+on A.adjusted_lvl1_acct_id = dt.adjusted_lvl1_acct_id
+and model_DT_HA beween start_date and end_date
+group by 1,2,3,4,5,6
+
+
+
+
+example 5 monthly query
+declare p_start_date date default '2023-01-01';
+declare p_end_date date default last_day(date_sub(current_date(),interval 1 month));
+declare p_lvl1_acct_id string default '7638'
+declare a_start_date date default p_start_date;
+declare a_end_date date default p_end_date;
+
+set p_end_date = date('2023-04-01');
+
+set (a_start_date,a_end_date) =
+(
+ select as struct
+    greatest(min(start_date),p_start_date) as a_start_date,
+    leastest(max(end_date),p_end_date) as a_end_date
+from xxx.xxx.aggreated_monthly
+where adjusted_lvl1_acct_id in (p_lvl1_acct_id)
+)
+;
+
+
+select *
+from xxx.xxx.aggreated_monthly
+where agg_level in ('Client_total','Program_NM') and adjusted_lvl1_acct_id in (p_lvl1_acct_id)
+    and start_date = date(a_start_date) and end_date = last_day(date(a_end_date))
+;
+
+select *
+from xxx.xxx.clinical_campaign_order A 
+left join
+    (select
+    from xxx.xxx.aggreated_monthly
+    where agg_level = 'Clinical_Category' and  and adjusted_lvl1_acct_id in (p_lvl1_acct_id)
+    and start_date = date(a_start_date) and end_date = last_day(date(a_end_date)) ) B 
+on A.Clinical_Category = B.agg_category
+order by program_name, Clinical_Category_order
+;
+
+example 6 yearly aggragate
+
+final tables
+--xxx.xxx.aggragated_memeber_oppty_count_yearly_complete
+--xxx.xxx.aggragated_avg_oppty_per_member_yearly
+--oppty = individual_id || meid || campaign_id 
+
+
+create or replace table xxx.xxx.HA_date_range as 
+select
+B.*, date_diff(end_date,start_date,month) + 1 as month_diff
+from (
+select 
+    lvl1_acct_id,
+    lvl1_acct_nm,
+    category_nm，
+    campaign_nm,
+    go_live_dt,
+    exprn_dt,
+    greatest(go_live_dt,date_sub(end_date,interval 11 month)) as start_date,
+    last_day(end_date) as end_date
+from 
+(select distinct 
+    lvl1_acct_id,
+    lvl1_acct_nm,
+    campaign_nm,
+    campaign_nm,
+    go_live_dt,
+    exprn_dt,
+    end_date
+from xxx.xxx.HA_mart
+cross join unnest(generate_date_array(go_live_dt, least(current_date(), exprn_dt),interval 1 month)) as end_date
+)A
+)B 
+;
+
+--create subset for data mart to create large joined tables
+create or replace temp table subset_data_mart as 
+select  
+    distinct 
+    individual_id,
+    meid,
+    lvl1_acct_nm,
+    lvl1_acct_id,
+    category_nm，
+    campaign_nm,
+    campaign_id,
+    model_DT,
+    identified_ind,
+    identified_oppty_ind,
+    targeted_ind,
+    reached_ind
+from xxx.xxx.HA_mart
+;
+
+--create the joined table1 
+create or replace table xxx.xxx.HA_joined_date_frame1 as 
+select distinct 
+    individual_id,
+    meid,
+    A.lvl1_acct_nm,
+    A.lvl1_acct_id,
+    A.campaign_id,
+    identified_ind,
+    identified_oppty_ind,
+    targeted_ind,
+    reached_ind,
+    start_date,
+    end_date
+from xxx.xxx.HA_date_range dt 
+left join subset_data_mart A 
+on A.lvl1_acct_id =dt.lvl1_acct_id and model_DT between start_date and end_date
+;
+
+--create the joined big table2
+create or replace table xxx.xxx.HA_joined_date_frame2 as 
+select distinct
+    A.* except(model_DT),
+    start_date,
+    end_date
+from xxx.xxx.HA_date_range dt 
+left join subset_data_mart A 
+on A.lvl1_acct_id =dt.lvl1_acct_id and model_DT between start_date and end_date
+    and A.campaign_nm = dt.campaign_nm
+;
+
+
+--create or replace table xxx.xxx.HA+campaign_order as 
+--select distinct
+--category_nm，
+--campaign_nm,
+--campaign_order
+--from xxx.xxx.HA_mart
+--order by campaign_order
+--;
+
+--create the aggragated layer
+create or replace table xxx.xxx.HA_aggragated_member_oppty_count_yearly as 
+select
+lvl1_acct_nm,
+lvl1_acct_id,
+campaign_nm as agg_category,
+'Campaign' as agg_level,
+start_date,
+end_date,
+count(distinct case when identified_ind = 1 then individual_id else null end) as enrolled_member,
+count(distinct case when identified_oppty_ind = 1 then individual_id else null end) as identified_member_with_oppty,
+count(distinct case when identified_oppty_ind = 1 then individual_id || meid || campaign_id else null end) as total_identified_oppty,
+count(distinct case when targeted_ind = 1 then individual_id else null end) as outreached_targeted_member,
+count(distinct case when targeted_ind = 1 then individual_id || meid || campaign_id else null end) as outreached_targeted_oppty,
+count(distinct case when reached_ind = 1 then individual_id else null end) as reached_member,
+count(distinct case when reached_ind = 1 then individual_id || meid || campaign_id else null end) as reached_oppty,
+--count(distinct case when engaged_ind = 1 then individual_id else null end) as engaged_member
+from xxx.xxx.HA_joined_date_frame2
+group by 1,2,3,4,5,6
+
+union all 
+
+select
+lvl1_acct_nm,
+lvl1_acct_id,
+campaign_nm as agg_category,
+'Clinical_Category' as agg_level,
+start_date,
+end_date,
+count(distinct case when identified_ind = 1 then individual_id else null end) as enrolled_member,
+count(distinct case when identified_oppty_ind = 1 then individual_id else null end) as identified_member_with_oppty,
+count(distinct case when identified_oppty_ind = 1 then individual_id || meid || campaign_id else null end) as total_identified_oppty,
+count(distinct case when targeted_ind = 1 then individual_id else null end) as outreached_targeted_member,
+count(distinct case when targeted_ind = 1 then individual_id || meid || campaign_id else null end) as outreached_targeted_oppty,
+count(distinct case when reached_ind = 1 then individual_id else null end) as reached_member,
+count(distinct case when reached_ind = 1 then individual_id || meid || campaign_id else null end) as reached_oppty,
+--count(distinct case when engaged_ind = 1 then individual_id else null end) as engaged_member
+from xxx.xxx.HA_joined_date_frame2
+group by 1,2,3,4,5,6
+
+union all
+
+select
+lvl1_acct_nm,
+lvl1_acct_id,
+campaign_nm as agg_category,
+'Client_total' as agg_level,
+start_date,
+end_date,
+count(distinct case when identified_ind = 1 then individual_id else null end) as enrolled_member,
+count(distinct case when identified_oppty_ind = 1 then individual_id else null end) as identified_member_with_oppty,
+count(distinct case when identified_oppty_ind = 1 then individual_id || meid || campaign_id else null end) as total_identified_oppty,
+count(distinct case when targeted_ind = 1 then individual_id else null end) as outreached_targeted_member,
+count(distinct case when targeted_ind = 1 then individual_id || meid || campaign_id else null end) as outreached_targeted_oppty,
+count(distinct case when reached_ind = 1 then individual_id else null end) as reached_member,
+count(distinct case when reached_ind = 1 then individual_id || meid || campaign_id else null end) as reached_oppty,
+--count(distinct case when engaged_ind = 1 then individual_id else null end) as engaged_member
+from xxx.xxx.HA_joined_date_frame2
+group by 1,2,3,4,5,6
+; 
+
+--calcuate avg oppty per member 
+create or replace table xxx.xxx.HA_aggragated_member_oppty_count_yearly_complete as 
+select 
+    *,
+    case when agg_category in ('total') then    
+        round(total_identified_oppty/(if(identified_member_with_oppty = 0, null, identified_member_with_oppty)),2)
+        else null end as avg_oppty_per_member,
+
+    case when agg_category in ('total') then    
+        round(outreached_targeted_oppty/(if(outreached_targeted_member = 0, null, outreached_targeted_member)),2)
+        else null end as outreached_oppty_per_member,
+
+    case when agg_category in ('total') then    
+        round(outreached_targeted_member/(if(identified_member_with_oppty = 0, null, identified_member_with_oppty)*100),1)
+        else null end as outreached_oppty_per_member,
+from xxx.xxx.HA_aggragated_member_oppty_count_yearly
+order by 1,2,3,4,5,6
+;
+
+--calcuate teh avg_oppty_per_member
+create or replace temp xxx.xxx.HA_aggragated_avg_oppty_count_yearly as 
+    select C*, round(100*mem_cnt/if(total_mem_cnt + 0, null,total_mem_cnt),1) as pct
+    from 
+    (
+        select B.*, sum(mem_cnt) over(partition by lvl1, start_date, end_date) as total_mem_cnt
+        from 
+            (
+               select 
+               lvl1_acct_nm,
+               lvl1_acct_id,
+               start_date,
+               end_date,
+               case when oppty_cnt = 1 then "1"
+                    when oppty_cnt = 2 then "2"
+                    when oppty_cnt = 3 then "3"
+                    else '4+'
+                    end as oppty_cnt_summary,
+                count(distinct individual_id) as mem_cnt
+                from (
+                    select 
+                    dt.lvl1_acct_nm,
+                    dt.lvl1_acct_id,
+                    start_date,
+                    end_date,
+                    individual_id,
+                    count(distinct individual_id || meid || campaign_id ) as oppty_cnt
+                    from xxx.xxx.HA_mart A 
+                    right join xxx.xxx.HA_date_range dt 
+                    on A.lvl1_acct_id = dt.lvl1_acct_id and (model_DT between start_date and end_date) and identified_oppty_ind = 1
+                    group by 1,2,3,4,5
+                ) A 
+            group by 1,2,3,4,5
+            )B 
+    )C 
+order by 1,2,3,4,5
+;
+
+
+
+
