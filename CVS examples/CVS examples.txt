@@ -177,7 +177,7 @@ where month1 <= last_day(month2)
 ;
 
 --create aggragated layer
-create or replace table xxx.xxx.aggragated_monthly as 
+create or replace table xxx.xxx.MCA_SOC_aggregated_member_oppty_count_monthly as 
 select 
 dt.adjusted_lvl1_acct_nm,
 dt.adjusted_lvl1_acct_id,
@@ -263,11 +263,88 @@ right join date_range_monthly dt
 on A.adjusted_lvl1_acct_id = dt.adjusted_lvl1_acct_id
 and model_DT_HA beween start_date and end_date
 group by 1,2,3,4,5,6
+;
 
+--calculate avg oppty per member
+create or replace temp table xxx.xxx.MCA_SOC_aggregated_member_oppty_count_monthly_complete as 
+select *,
+case when agg_category in ('total','MCA total','SOC total')  
+    then round(total_identified_oppty/(if identified_member_with_oppty = 0, null, identified_member_with_oppty)),1)
+    else null end as avg_oppty_per_member,
+case when agg_category not in ('total','MCA total','SOC total') 
+    then round(outreached_targeted_member/ if(identified_member_with_oppty = 0, null, identified_member_with_oppty)*100,1)
+    else null end as outreached_rate
+from xxx.xxx.MCA_SOC_aggregated_member_oppty_count_monthly
+order by 1,2,3,4,5,6
+;
 
+--calculate the share of identified_member_with_oppty in each Clinical_Category
+create or replace temp table xxx.xxx.MCA_SOC_aggregated_clinical_share_monthly as 
+select distinct 
+    B.adjusted_lvl1_acct_nm,
+    B.adjusted_lvl1_acct_id,
+    B.start_date,
+    B.end_date,
+    A.program_name,
+    A.Clinical_Category,
+    round(B.identified_member_with_oppty/if(C.identified_member_with_oppty = 0, null,C.identified_member_with_oppty)*100,1) as percentage,
+    Clinical_Category_order
+from xxx.xxx.MCA_SOC_OS_clinical_campaign_order A 
+left join(
+    select distinct 
+    adjusted_lvl1_acct_nm,
+    adjusted_lvl1_acct_id,
+    start_date,
+    end_date,
+    agg_category as program_total,
+    identified_member_with_oppty
+    from xxx.xxx.MCA_SOC_aggregated_member_oppty_count_monthly_complete
+    where agg_level = 'Program_NM') C 
+    on A.program_name = left(C.program_total, 3)
+where B.adjusted_lvl1_acct_id = C.adjusted_lvl1_acct_id and B.start_date = C.start_date and B.end_date = C.end_date
+order by 1,2,3,4,5,8
+;
 
+--calcuate the avg oppty per memeber
+create or repalce table xxx.xxx.MCA_SOC_aggregated_avg_oppty_count_monthly as 
+    select C.* round(100*mem_cnt / if(total_mem_cnt =0, null, total_mem_cnt),1) as pct
+    from (
+        select B.*, sum(mem_cnt) over(partition by adjusted_lvl1_acct_id, start_date,end_date) as total_mem_cnt
+        from (
+         select
+            adjusted_lvl1_acct_nm,
+            adjusted_lvl1_acct_id,
+            start_date,
+            end_date,
+            case when oppty_cnt = 1 then '1'
+                when oppty_cnt = 2 then '2'
+                when oppty_cnt = 3 then '3'
+                else '4+'
+                end as oppty_cnt_summary,
+            count(distinct individual_id) as mem_cnt 
+         from (
+                select
+                    dt.adjusted_lvl1_acct_nm,
+                    dt.adjusted_lvl1_acct_id,
+                    start_date,
+                    end_date,
+                    individual_id,
+                    count(distinct individual_id || oppty_id) as oppty_cnt 
+                from (
+                    select * from xxx.xxx.HA_OX_DM where Program_nm in ('MCA','SOC')
+                )A 
+                right join date  dt
+                on A.adjusted_lvl1_acct_id = dt.adjusted_lvl1_acct_id and (model_DT_HA between start_date and end_date)
+                and identified_oppty_ind_HA = 1
+                group by 1,2,3,4,5
+            )A 
+            group by 1,2,3,4,5
+        ) B 
+    ) C
+order by 1,2,3,4,5
+; 
 
-example 5 monthly query
+example 5 agg monthly query
 declare p_start_date date default '2023-01-01';
 declare p_end_date date default last_day(date_sub(current_date(),interval 1 month));
 declare p_lvl1_acct_id string default '7638'
@@ -276,33 +353,114 @@ declare a_end_date date default p_end_date;
 
 set p_end_date = date('2023-04-01');
 
+--make sure the selected date range is in the actual date range 
 set (a_start_date,a_end_date) =
 (
  select as struct
     greatest(min(start_date),p_start_date) as a_start_date,
     leastest(max(end_date),p_end_date) as a_end_date
-from xxx.xxx.aggreated_monthly
+from xxx.xxx.MCA_SOC_aggregated_member_oppty_count_monthly_complete
 where adjusted_lvl1_acct_id in (p_lvl1_acct_id)
 )
 ;
 
-
-select *
-from xxx.xxx.aggreated_monthly
+--EI/OS overview dashboard --summary table
+select 
+    adjusted_lvl1_acct_nm,
+    adjusted_lvl1_acct_id,
+    agg_category,
+    --agg_level,
+    start_date,
+    end_date,
+    enrolled_member as total_member,
+    identified_member_with_oppty as total_member_with_oppty,
+    total_identified_oppty as total_opportunities,
+    outreached_targeted_member as total_outreached,
+    avg_oppty_per_member,
+    reached_member,
+    engaged_member
+from xxx.xxx.MCA_SOC_aggregated_member_oppty_count_monthly_complete
 where agg_level in ('Client_total','Program_NM') and adjusted_lvl1_acct_id in (p_lvl1_acct_id)
     and start_date = date(a_start_date) and end_date = last_day(date(a_end_date))
 ;
 
-select *
-from xxx.xxx.clinical_campaign_order A 
+--EI overview dashboard --Clinical_Category member & oppty 
+select distinct 
+    B.adjusted_lvl1_acct_nm,
+    B.adjusted_lvl1_acct_id,
+    B.start_date,
+    B.end_date,
+    program_name,
+    Clinical_Category,
+    --B.enrolled_member,
+    B.total_identified_oppty as opportunity,
+    B.identified_member_with_oppty as member,
+    --B.outreached_targeted_member as outreached_member,
+    --B.outreached_rate,
+    clinical_campaign_order
+from xxx.xxx.MCA_SOC_OS_clinical_campaign_order A 
 left join
     (select
-    from xxx.xxx.aggreated_monthly
+    from xxx.xxx.MCA_SOC_aggregated_member_oppty_count_monthly_complete
     where agg_level = 'Clinical_Category' and  and adjusted_lvl1_acct_id in (p_lvl1_acct_id)
     and start_date = date(a_start_date) and end_date = last_day(date(a_end_date)) ) B 
 on A.Clinical_Category = B.agg_category
 order by program_name, Clinical_Category_order
 ;
+
+--OS overview dashboard - bar chart (outreached_rate - grey bar)
+select distinct 
+    B.adjusted_lvl1_acct_nm,
+    B.adjusted_lvl1_acct_id,
+    B.start_date,
+    B.end_date,
+    program_name,
+    Clinical_Category,
+    B.outreached_rate,
+    clinical_campaign_order
+from xxx.xxx.MCA_SOC_OS_clinical_campaign_order A 
+left join
+    (select
+    from xxx.xxx.MCA_SOC_aggregated_member_oppty_count_monthly_complete
+    where agg_level = 'Clinical_Category' and  and adjusted_lvl1_acct_id in (p_lvl1_acct_id)
+    and start_date = date(a_start_date) and end_date = last_day(date(a_end_date)) ) B 
+on A.Clinical_Category = B.agg_category
+order by program_name, Clinical_Category_order
+；
+
+----OS overview dashboard - bar chart (% - blue bar)
+select *
+from xxx.xxx.MCA_SOC_aggregated_clinical_share_monthly
+where  adjusted_lvl1_acct_id in (p_lvl1_acct_id)
+    and start_date = date(a_start_date) and end_date = last_day(date(a_end_date))
+；
+
+--OS overview dashboard - funnel table 
+select distinct 
+    B.adjusted_lvl1_acct_nm,
+    B.adjusted_lvl1_acct_id,
+    B.start_date,
+    B.end_date,
+    program_name,
+    Clinical_Category,
+    --B.enrolled_member,
+    B.identified_member_with_oppty as identified_member,
+    --B.total_identified_oppty,
+    B.outreached_targeted_member as outreached_member,
+    --B.outreached_rate,
+    campaign_order
+from xxx.xxx.MCA_SOC_OS_clinical_campaign_order A 
+left join
+    (select
+    from xxx.xxx.MCA_SOC_aggragated_member_oppty_count_monthly_complete
+    where agg_level = 'Clinical_Category' and  and adjusted_lvl1_acct_id in (p_lvl1_acct_id)
+    and start_date = date(a_start_date) and end_date = last_day(date(a_end_date)) ) B 
+on A.Clinical_Category = B.agg_category
+order by program_name, Clinical_Category_order
+
+
+
+
 
 example 6 yearly aggragate
 
@@ -517,6 +675,8 @@ create or replace temp xxx.xxx.HA_aggragated_avg_oppty_count_yearly as
     )C 
 order by 1,2,3,4,5
 ;
+
+
 
 
 
